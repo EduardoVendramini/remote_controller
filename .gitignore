@@ -41,6 +41,11 @@
 *.su
 *.idb
 *.pdb
+*.dblite
+*.sconsign311.dblite
+.sconsign311.dblite
+
+
 
 # Kernel Module Compile Results
 *.mod*
