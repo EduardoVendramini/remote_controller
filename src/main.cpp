@@ -8,8 +8,6 @@
 #endif
 
 BluetoothSerial SerialBT;
-const char *pin = "1234";
-String slaveName = "HC-06-MODULO5";
 
 LiquidCrystal_I2C lcd(0x3F, 16, 2);
 
@@ -20,13 +18,6 @@ void setup()
   Serial.begin(9600);
 
   SerialBT.begin("ESP32", true);
-  SerialBT.setPin(pin);
-
-  //while (!SerialBT.connect(slaveName))
-  //{
-  //  Serial.println("Trying to connect to" + slaveName);
-  //}
-  //Serial.println("Bluetooth connected");
 
   lcd.init();
   lcd.backlight();
