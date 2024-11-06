@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
@@ -46,8 +47,8 @@ void setup()
 
 void loop()
 {
-  int openLoopState = digitalRead(3);
-  int setupState = digitalRead(4);
+int openLoopState = digitalRead(PIN_OPEN_LOOP);
+int setupState = digitalRead(PIN_SETUP);
 
   if (openLoopState == HIGH)
   {
