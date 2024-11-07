@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <BluetoothSerial.h>
+#include <ArduinoJson.h>
 
 // Bluetooth
 #define BT_DISCOVER_TIME 10000
@@ -12,13 +13,15 @@ BluetoothSerial SerialBT;
 uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xEB, 0x2E}; // MAC Address of the slave, got from scanning
 void bluetoothScan();
 void bluetoothConnect();
+unsigned long lastBluetoothSendTime = 0;
+const unsigned long bluetoothInterval = 3000;
 
 // LCD
 LiquidCrystal_I2C lcd(0x3F, 16, 2);
 
 // Buttons
-#define PIN_DISTURBANCE 15         // Perturbação
-#define PIN_OPEN_LOOP 3           // MA
+#define PIN_DISTURBANCE 15        // Perturbação
+#define PIN_OPEN_LOOP 16          // MA
 #define PIN_SETUP 4               // Prog
 #define PIN_POTENTIOMETER_SETUP 5 // Ajuste Pot.
 #define POTENTIOMETER_TOP 33      // Equivalente ao A1 (ADC1_CH5)
@@ -31,37 +34,37 @@ float kp = 0.0, kd = 0.0, ki = 0.0;
 float m1 = 1200, m2 = 1200;
 float ref = 0.0;
 float gyr = 0.99;
+JsonDocument doc;
 
-int openLoopState = digitalRead(PIN_OPEN_LOOP);
-int setupState = digitalRead(PIN_SETUP);
-int disturbanceState = digitalRead(PIN_DISTURBANCE);
-int potentiometerSetupState = digitalRead(PIN_POTENTIOMETER_SETUP);
-
-int potKp = analogRead(POTENTIOMETER_TOP), potKd = analogRead(POTENTIOMETER_MID), potKi = analogRead(POTENTIOMETER_BOTTOM);
-int potM1 = analogRead(POTENTIOMETER_TOP), potM2 = analogRead(POTENTIOMETER_BOTTOM);
-int potGyr = analogRead(POTENTIOMETER_TOP), potRef = analogRead(POTENTIOMETER_BOTTOM);
-int lastPotKp = analogRead(POTENTIOMETER_TOP), lastPotKd = analogRead(POTENTIOMETER_MID), lastPotKi = analogRead(POTENTIOMETER_BOTTOM);
-int lastPotM1 = analogRead(POTENTIOMETER_TOP), lastPotM2 = analogRead(POTENTIOMETER_BOTTOM);
-int lastPotGyr = analogRead(POTENTIOMETER_TOP), lastPotRef = analogRead(POTENTIOMETER_BOTTOM);
+int openLoopState, setupState, disturbanceState, potentiometerSetupState = 0;
+int potKp, potKd, potKi,
+    potM1, potM2,
+    potGyr, potRef,
+    lastPotKp, lastPotKd, lastPotKi,
+    lastPotM1, lastPotM2,
+    lastPotGyr, lastPotRef = 0;
+int potOffset = 35;
 
 void setDisturbance();
 void setGains();
 void setMotors();
 void setupGyrRef();
 void potentiometerSetup();
+void sendJson();
 
 // Serial output
-String incomingMessage = "";
+String outcomingMessage = "";
 
 void setup()
 {
   // Serial
   Serial.begin(9600);
+  Serial.println("Starting.");
 
   // Bluetooth
   SerialBT.begin("ESP32", true);
   // bluetoothScan();
-  // bluetoothConnect();
+  bluetoothConnect();
 
   // LCD
   lcd.init();
@@ -98,19 +101,28 @@ void loop()
 
   setDisturbance();
 
-  // if (Serial.available())
-  //{
-  //   incomingMessage = Serial.readString();
-  //
-  //  Serial.println(incomingMessage);
-  //  SerialBT.println(incomingMessage);
-  //
-  //  lcd.clear();
-  //  lcd.setCursor(0, 0);
-  //  lcd.print(incomingMessage);
-  //
-  //  incomingMessage = "";
-  //}
+  sendJson();
+}
+
+void sendJson()
+{
+  doc["kp"] = kp;
+  doc["kd"] = kd;
+  doc["ki"] = ki;
+  doc["m1"] = m1;
+  doc["m2"] = m2;
+  doc["reference"] = ref;
+  doc["gyroscope"] = gyr;
+  doc["disturbance"] = disturbanceState;
+
+  serializeJson(doc, outcomingMessage);
+
+  if (millis() - lastBluetoothSendTime > bluetoothInterval)
+  {
+    SerialBT.println(outcomingMessage);
+    Serial.println(outcomingMessage);
+    lastBluetoothSendTime = millis();
+  }
 }
 
 void bluetoothScan()
@@ -155,11 +167,9 @@ void setDisturbance()
 
 void setGains()
 {
-  // lcd.clear(); // Clear the LCD before printing new values
   lcd.setCursor(0, 0);
   lcd.print("kp kd ki   ");
 
-  // set cursor to first column second row
   potKp = analogRead(POTENTIOMETER_TOP);
   potKd = analogRead(POTENTIOMETER_MID);
   potKi = analogRead(POTENTIOMETER_BOTTOM);
@@ -167,7 +177,7 @@ void setGains()
   lcd.setCursor(0, 1);
 
   // kp
-  if (potKp > lastPotKp + 5)
+  if (potKp > lastPotKp + potOffset)
   {
     kp += 0.01;
     if (kp > 0.90)
@@ -175,7 +185,7 @@ void setGains()
       kp = 0.90;
     }
   }
-  else if (potKp < lastPotKp - 5)
+  else if (potKp < lastPotKp - potOffset)
   {
     kp -= 0.01;
     if (kp < 0)
@@ -185,7 +195,7 @@ void setGains()
   }
 
   // kd
-  if (potKd > lastPotKd + 5)
+  if (potKd > lastPotKd + potOffset)
   {
     kd += 0.01;
     if (kd > 0.90)
@@ -193,7 +203,7 @@ void setGains()
       kd = 0.90;
     }
   }
-  else if (potKd < lastPotKd - 5)
+  else if (potKd < lastPotKd - potOffset)
   {
     kd -= 0.01;
     if (kd < 0.0)
@@ -203,7 +213,7 @@ void setGains()
   }
 
   // ki
-  if (potKi > lastPotKi + 5)
+  if (potKi > lastPotKi + potOffset)
   {
     ki += 0.01;
     if (ki > 0.90)
@@ -211,7 +221,7 @@ void setGains()
       ki = 0.90;
     }
   }
-  else if (potKi < lastPotKi - 5)
+  else if (potKi < lastPotKi - potOffset)
   {
     ki -= 0.01;
     if (ki < 0)
@@ -245,7 +255,7 @@ void setMotors()
   potM2 = analogRead(POTENTIOMETER_BOTTOM);
 
   // m1
-  if (potM1 > lastPotM1 + 5)
+  if (potM1 > lastPotM1 + potOffset)
   {
     m1 += 5;
     if (m1 > MAX_MOTOR_SPEED)
@@ -253,7 +263,7 @@ void setMotors()
       m1 = MAX_MOTOR_SPEED;
     }
   }
-  else if (potM1 < lastPotM1 - 5)
+  else if (potM1 < lastPotM1 - potOffset)
   {
     m1 -= 5;
     if (m1 < MIN_MOTOR_SPEED)
@@ -263,7 +273,7 @@ void setMotors()
   }
 
   // m2
-  if (potM2 > lastPotM2 + 5)
+  if (potM2 > lastPotM2 + potOffset)
   {
     m2 += 5;
     if (m2 > MAX_MOTOR_SPEED)
@@ -271,7 +281,7 @@ void setMotors()
       m2 = MAX_MOTOR_SPEED;
     }
   }
-  else if (potM2 < lastPotM2 - 5)
+  else if (potM2 < lastPotM2 - potOffset)
   {
     m2 -= 5;
     if (m2 < MIN_MOTOR_SPEED)
@@ -302,7 +312,7 @@ void setupGyrRef()
   potRef = analogRead(POTENTIOMETER_BOTTOM);
 
   // Gyr
-  if (potGyr > lastPotGyr + 5)
+  if (potGyr > lastPotGyr + potOffset)
   {
     gyr += 0.01;
     if (gyr > 1.0)
@@ -310,7 +320,7 @@ void setupGyrRef()
       gyr = 1.0;
     }
   }
-  else if (potGyr < lastPotGyr - 5)
+  else if (potGyr < lastPotGyr - potOffset)
   {
     gyr -= 0.01;
     if (gyr < 0.9)
@@ -320,7 +330,7 @@ void setupGyrRef()
   }
 
   // Ref
-  if (potRef > lastPotRef + 5)
+  if (potRef > lastPotRef + potOffset)
   {
     ref += 5;
     if (ref > 180)
@@ -328,7 +338,7 @@ void setupGyrRef()
       ref = 180;
     }
   }
-  else if (potRef < lastPotRef - 5)
+  else if (potRef < lastPotRef - potOffset)
   {
     ref -= 5;
     if (ref < -180)
