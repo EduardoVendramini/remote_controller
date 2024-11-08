@@ -14,7 +14,7 @@ uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xEB, 0x2E}; // MAC Address of the
 void bluetoothScan();
 void bluetoothConnect();
 unsigned long lastBluetoothSendTime = 0;
-const unsigned long bluetoothInterval = 3000;
+const unsigned long bluetoothInterval = 1200;
 
 // LCD
 LiquidCrystal_I2C lcd(0x3F, 16, 2);
@@ -36,7 +36,7 @@ float ref = 0.0;
 float gyr = 0.99;
 JsonDocument doc;
 
-int openLoopState, setupState, disturbanceState, potentiometerSetupState = 0;
+int openLoopState = 0, setupState = 0, disturbanceState = 0, potentiometerSetupState = 0, automaticState = 0;
 int potKp, potKd, potKi,
     potM1, potM2,
     potGyr, potRef,
@@ -63,6 +63,7 @@ void setup()
 
   // Bluetooth
   SerialBT.begin("ESP32", true);
+
   // bluetoothScan();
   bluetoothConnect();
 
@@ -92,11 +93,20 @@ void loop()
   else
   {
     if (openLoopState == LOW)
+    {
+      automaticState = 0;
       setMotors();
+    }
     else if (setupState == LOW)
+    {
       setupGyrRef();
+      automaticState = 1;
+    }
     else
+    {
       setGains();
+      automaticState = 1;
+    }
   }
 
   setDisturbance();
@@ -114,6 +124,7 @@ void sendJson()
   doc["reference"] = ref;
   doc["gyroscope"] = gyr;
   doc["disturbance"] = disturbanceState;
+  doc["automatic"] = automaticState;
 
   serializeJson(doc, outcomingMessage);
 
