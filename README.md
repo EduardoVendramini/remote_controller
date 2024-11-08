@@ -10,3 +10,7 @@ This code is made to send data to the PID controller via bluetooth. The remote c
 
 D21 SDA
 D22 SCL
+
+## Releases
+
+1.0 - The bluetooth dat is being sent every 1.2 second. The potentiometers and buttons are working properly, as well as the lcd display.
