@@ -2,7 +2,6 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <BluetoothSerial.h>
-#include <ArduinoJson.h>
 
 // Bluetooth
 #define BT_DISCOVER_TIME 10000
@@ -10,8 +9,9 @@
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
 #endif
 BluetoothSerial SerialBT;
-uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xEB, 0x2E}; // MAC Address of the slave, got from scanning
-void bluetoothScan();
+// uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xEB, 0x2E}; // MAC Address of the slave, got from scanning
+uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xD3, 0x2A}; // From home
+// void bluetoothScan();
 void bluetoothConnect();
 unsigned long lastBluetoothSendTime = 0;
 const unsigned long bluetoothInterval = 1200;
@@ -31,10 +31,9 @@ LiquidCrystal_I2C lcd(0x3F, 16, 2);
 #define MIN_MOTOR_SPEED 1000
 
 float kp = 0.0, kd = 0.0, ki = 0.0;
-float m1 = 1200, m2 = 1200;
+int m1 = 1200, m2 = 1200;
 float ref = 0.0;
 float gyr = 0.99;
-JsonDocument doc;
 
 int openLoopState = 0, setupState = 0, disturbanceState = 0, potentiometerSetupState = 0, automaticState = 0;
 int potKp, potKd, potKi,
@@ -50,7 +49,7 @@ void setGains();
 void setMotors();
 void setupGyrRef();
 void potentiometerSetup();
-void sendJson();
+void sendBluetoothMessage();
 
 // Serial output
 String outcomingMessage = "";
@@ -61,17 +60,15 @@ void setup()
   Serial.begin(9600);
   Serial.println("Starting.");
 
+  // LCD
+  lcd.init();
+  lcd.backlight();
+
   // Bluetooth
   SerialBT.begin("ESP32", true);
 
   // bluetoothScan();
   bluetoothConnect();
-
-  // LCD
-  lcd.init();
-  lcd.backlight();
-  lcd.setCursor(0, 0);
-  lcd.print("Hello.");
 
   // Buttons
   pinMode(PIN_DISTURBANCE, INPUT_PULLUP);
@@ -91,42 +88,35 @@ void loop()
     potentiometerSetup();
 
   else
+
+      if (openLoopState == LOW)
   {
-    if (openLoopState == LOW)
-    {
-      automaticState = 0;
-      setMotors();
-    }
-    else if (setupState == LOW)
-    {
-      setupGyrRef();
-      automaticState = 1;
-    }
-    else
-    {
-      setGains();
-      automaticState = 1;
-    }
+    automaticState = 0;
+    setMotors();
+  }
+  else if (setupState == LOW)
+  {
+    setupGyrRef();
+    automaticState = 1;
+  }
+  else
+  {
+    setGains();
+    automaticState = 1;
   }
 
   setDisturbance();
 
-  sendJson();
+  sendBluetoothMessage();
 }
 
-void sendJson()
+void sendBluetoothMessage()
 {
-  doc["kp"] = kp;
-  doc["kd"] = kd;
-  doc["ki"] = ki;
-  doc["m1"] = m1;
-  doc["m2"] = m2;
-  doc["reference"] = ref;
-  doc["gyroscope"] = gyr;
-  doc["disturbance"] = disturbanceState;
-  doc["automatic"] = automaticState;
-
-  serializeJson(doc, outcomingMessage);
+  // kp, ki, kd, m1, m2, gyr, ref, automaticState, disturbanceState
+  outcomingMessage = String(kp) + "," + String(ki) + "," + String(kd) + "," + String(m1) + "," + String(m2) + "," +
+                     String(gyr) + "," + String(ref) + "," + String(automaticState) + "," + String(disturbanceState);
+  // outcomingMessage = "p" + String(kp) + ",d" + String(kd) + ",i" + String(ki) + ",y" + String(int(m1)) + ",t" + String(int(m2)) + ",g" +
+  //                    String(gyr) + ",r" + String(ref) + ",a" + String(automaticState) + ",b" + String(disturbanceState);
 
   if (millis() - lastBluetoothSendTime > bluetoothInterval)
   {
@@ -148,17 +138,29 @@ void bluetoothScan()
 
 void bluetoothConnect()
 {
+
   for (int i = 0; i < 3; i++)
   {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Connecting...");
     Serial.println("Connecting...");
     if (SerialBT.connect(address))
     {
+      lcd.setCursor(0, 0);
+      lcd.print("Connected");
       Serial.println("Connected");
       return;
     }
     else
     {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Connection");
+      lcd.setCursor(0, 1);
+      lcd.print("failed");
       Serial.println("Failed to connect");
+      delay(1000);
     }
   }
 }
@@ -314,7 +316,7 @@ void setupGyrRef()
 {
   // write in the first row of the lcd
   lcd.setCursor(0, 0);
-  lcd.print("Gyr and ref  ");
+  lcd.print("Gyr and ref ");
 
   // write in the second row of the lcd
   lcd.setCursor(0, 1);
@@ -364,7 +366,7 @@ void setupGyrRef()
   lcd.print(gyr);
   lcd.print("     ");
   lcd.print(ref);
-  lcd.print("     ");
+  lcd.print(" ");
 }
 
 void potentiometerSetup()
