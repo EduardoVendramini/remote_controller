@@ -2,7 +2,6 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <BluetoothSerial.h>
-#include <ArduinoJson.h>
 
 // Bluetooth
 #define BT_DISCOVER_TIME 10000
@@ -11,7 +10,8 @@
 #endif
 BluetoothSerial SerialBT;
 uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xEB, 0x2E}; // MAC Address of the slave, got from scanning
-void bluetoothScan();
+// uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xD3, 0x2A}; // From home
+// void bluetoothScan();
 void bluetoothConnect();
 unsigned long lastBluetoothSendTime = 0;
 const unsigned long bluetoothInterval = 1200;
@@ -29,12 +29,19 @@ LiquidCrystal_I2C lcd(0x3F, 16, 2);
 #define POTENTIOMETER_BOTTOM 35   // Equivalente ao A3 (ADC1_CH7)
 #define MAX_MOTOR_SPEED 2000
 #define MIN_MOTOR_SPEED 1000
+#define MAX_KP 0.90
+#define MAX_KD 0.90
+#define MAX_KI 0.90
+#define MAX_GYR 1.0
+#define MIN_GYR 0.9
+#define MAX_REF 90
+#define MIN_REF -90
 
 float kp = 0.0, kd = 0.0, ki = 0.0;
-float m1 = 1200, m2 = 1200;
-float ref = 0.0;
-float gyr = 0.99;
-JsonDocument doc;
+int m1 = 1200, m2 = 1200, mIncrement = 5;
+float ref = 0.0, refIncrement = 5.0;
+float gyr = 0.99, gyrIncrement = 0.01;
+
 
 int openLoopState = 0, setupState = 0, disturbanceState = 0, potentiometerSetupState = 0, automaticState = 0;
 int potKp, potKd, potKi,
@@ -50,7 +57,7 @@ void setGains();
 void setMotors();
 void setupGyrRef();
 void potentiometerSetup();
-void sendJson();
+void sendBluetoothMessage();
 
 // Serial output
 String outcomingMessage = "";
@@ -61,17 +68,15 @@ void setup()
   Serial.begin(9600);
   Serial.println("Starting.");
 
+  // LCD
+  lcd.init();
+  lcd.backlight();
+
   // Bluetooth
   SerialBT.begin("ESP32", true);
 
   // bluetoothScan();
   bluetoothConnect();
-
-  // LCD
-  lcd.init();
-  lcd.backlight();
-  lcd.setCursor(0, 0);
-  lcd.print("Hello.");
 
   // Buttons
   pinMode(PIN_DISTURBANCE, INPUT_PULLUP);
@@ -91,42 +96,35 @@ void loop()
     potentiometerSetup();
 
   else
+
+      if (openLoopState == LOW)
   {
-    if (openLoopState == LOW)
-    {
-      automaticState = 0;
-      setMotors();
-    }
-    else if (setupState == LOW)
-    {
-      setupGyrRef();
-      automaticState = 1;
-    }
-    else
-    {
-      setGains();
-      automaticState = 1;
-    }
+    automaticState = 0;
+    setMotors();
+  }
+  else if (setupState == LOW)
+  {
+    setupGyrRef();
+    automaticState = 1;
+  }
+  else
+  {
+    setGains();
+    automaticState = 1;
   }
 
   setDisturbance();
 
-  sendJson();
+  sendBluetoothMessage();
 }
 
-void sendJson()
+void sendBluetoothMessage()
 {
-  doc["kp"] = kp;
-  doc["kd"] = kd;
-  doc["ki"] = ki;
-  doc["m1"] = m1;
-  doc["m2"] = m2;
-  doc["reference"] = ref;
-  doc["gyroscope"] = gyr;
-  doc["disturbance"] = disturbanceState;
-  doc["automatic"] = automaticState;
-
-  serializeJson(doc, outcomingMessage);
+  // kp, ki, kd, m1, m2, gyr, ref, automaticState, disturbanceState
+  outcomingMessage = String(kp) + "," + String(ki) + "," + String(kd) + "," + String(m1) + "," + String(m2) + "," +
+                     String(gyr) + "," + String(ref) + "," + String(automaticState) + "," + String(disturbanceState);
+  // outcomingMessage = "p" + String(kp) + ",d" + String(kd) + ",i" + String(ki) + ",y" + String(int(m1)) + ",t" + String(int(m2)) + ",g" +
+  //                    String(gyr) + ",r" + String(ref) + ",a" + String(automaticState) + ",b" + String(disturbanceState);
 
   if (millis() - lastBluetoothSendTime > bluetoothInterval)
   {
@@ -148,28 +146,40 @@ void bluetoothScan()
 
 void bluetoothConnect()
 {
+
   for (int i = 0; i < 3; i++)
   {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Connecting...");
     Serial.println("Connecting...");
     if (SerialBT.connect(address))
     {
+      lcd.setCursor(0, 0);
+      lcd.print("Connected");
       Serial.println("Connected");
       return;
     }
     else
     {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Connection");
+      lcd.setCursor(0, 1);
+      lcd.print("failed");
       Serial.println("Failed to connect");
+      delay(1000);
     }
   }
 }
 
 void setDisturbance()
 {
-  disturbanceState = digitalRead(PIN_DISTURBANCE);
+  disturbanceState = !digitalRead(PIN_DISTURBANCE); // pull-up
 
   lcd.setCursor(12, 0);
 
-  if (disturbanceState == LOW)
+  if (disturbanceState == HIGH)
     lcd.print("pOn ");
 
   else
@@ -191,9 +201,9 @@ void setGains()
   if (potKp > lastPotKp + potOffset)
   {
     kp += 0.01;
-    if (kp > 0.90)
+    if (kp > MAX_KP)
     {
-      kp = 0.90;
+      kp = MAX_KP;
     }
   }
   else if (potKp < lastPotKp - potOffset)
@@ -209,9 +219,9 @@ void setGains()
   if (potKd > lastPotKd + potOffset)
   {
     kd += 0.01;
-    if (kd > 0.90)
+    if (kd > MAX_KD)
     {
-      kd = 0.90;
+      kd = MAX_KD;
     }
   }
   else if (potKd < lastPotKd - potOffset)
@@ -227,9 +237,9 @@ void setGains()
   if (potKi > lastPotKi + potOffset)
   {
     ki += 0.01;
-    if (ki > 0.90)
+    if (ki > MAX_KI)
     {
-      ki = 0.90;
+      ki = MAX_KI;
     }
   }
   else if (potKi < lastPotKi - potOffset)
@@ -314,7 +324,7 @@ void setupGyrRef()
 {
   // write in the first row of the lcd
   lcd.setCursor(0, 0);
-  lcd.print("Gyr and ref  ");
+  lcd.print("Gyr and ref ");
 
   // write in the second row of the lcd
   lcd.setCursor(0, 1);
@@ -326,17 +336,17 @@ void setupGyrRef()
   if (potGyr > lastPotGyr + potOffset)
   {
     gyr += 0.01;
-    if (gyr > 1.0)
+    if (gyr > MAX_GYR)
     {
-      gyr = 1.0;
+      gyr = MAX_GYR;
     }
   }
   else if (potGyr < lastPotGyr - potOffset)
   {
     gyr -= 0.01;
-    if (gyr < 0.9)
+    if (gyr < MIN_GYR)
     {
-      gyr = 0.9;
+      gyr = MIN_GYR;
     }
   }
 
@@ -344,17 +354,17 @@ void setupGyrRef()
   if (potRef > lastPotRef + potOffset)
   {
     ref += 5;
-    if (ref > 180)
+    if (ref > MAX_REF)
     {
-      ref = 180;
+      ref = MAX_REF;
     }
   }
   else if (potRef < lastPotRef - potOffset)
   {
     ref -= 5;
-    if (ref < -180)
+    if (ref < MIN_REF)
     {
-      ref = -180;
+      ref = MIN_REF;
     }
   }
 
@@ -364,7 +374,7 @@ void setupGyrRef()
   lcd.print(gyr);
   lcd.print("     ");
   lcd.print(ref);
-  lcd.print("     ");
+  lcd.print(" ");
 }
 
 void potentiometerSetup()
