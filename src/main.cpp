@@ -9,8 +9,8 @@
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
 #endif
 BluetoothSerial SerialBT;
-// uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xEB, 0x2E}; // MAC Address of the slave, got from scanning
-uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xD3, 0x2A}; // From home
+uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xEB, 0x2E}; // MAC Address of the slave, got from scanning
+// uint8_t address[6] = {0x98, 0xDA, 0x60, 0x00, 0xD3, 0x2A}; // From home
 // void bluetoothScan();
 void bluetoothConnect();
 unsigned long lastBluetoothSendTime = 0;
@@ -29,11 +29,19 @@ LiquidCrystal_I2C lcd(0x3F, 16, 2);
 #define POTENTIOMETER_BOTTOM 35   // Equivalente ao A3 (ADC1_CH7)
 #define MAX_MOTOR_SPEED 2000
 #define MIN_MOTOR_SPEED 1000
+#define MAX_KP 0.90
+#define MAX_KD 0.90
+#define MAX_KI 0.90
+#define MAX_GYR 1.0
+#define MIN_GYR 0.9
+#define MAX_REF 90
+#define MIN_REF -90
 
 float kp = 0.0, kd = 0.0, ki = 0.0;
-int m1 = 1200, m2 = 1200;
-float ref = 0.0;
-float gyr = 0.99;
+int m1 = 1200, m2 = 1200, mIncrement = 5;
+float ref = 0.0, refIncrement = 5.0;
+float gyr = 0.99, gyrIncrement = 0.01;
+
 
 int openLoopState = 0, setupState = 0, disturbanceState = 0, potentiometerSetupState = 0, automaticState = 0;
 int potKp, potKd, potKi,
@@ -167,11 +175,11 @@ void bluetoothConnect()
 
 void setDisturbance()
 {
-  disturbanceState = digitalRead(PIN_DISTURBANCE);
+  disturbanceState = !digitalRead(PIN_DISTURBANCE); // pull-up
 
   lcd.setCursor(12, 0);
 
-  if (disturbanceState == LOW)
+  if (disturbanceState == HIGH)
     lcd.print("pOn ");
 
   else
@@ -193,9 +201,9 @@ void setGains()
   if (potKp > lastPotKp + potOffset)
   {
     kp += 0.01;
-    if (kp > 0.90)
+    if (kp > MAX_KP)
     {
-      kp = 0.90;
+      kp = MAX_KP;
     }
   }
   else if (potKp < lastPotKp - potOffset)
@@ -211,9 +219,9 @@ void setGains()
   if (potKd > lastPotKd + potOffset)
   {
     kd += 0.01;
-    if (kd > 0.90)
+    if (kd > MAX_KD)
     {
-      kd = 0.90;
+      kd = MAX_KD;
     }
   }
   else if (potKd < lastPotKd - potOffset)
@@ -229,9 +237,9 @@ void setGains()
   if (potKi > lastPotKi + potOffset)
   {
     ki += 0.01;
-    if (ki > 0.90)
+    if (ki > MAX_KI)
     {
-      ki = 0.90;
+      ki = MAX_KI;
     }
   }
   else if (potKi < lastPotKi - potOffset)
@@ -328,17 +336,17 @@ void setupGyrRef()
   if (potGyr > lastPotGyr + potOffset)
   {
     gyr += 0.01;
-    if (gyr > 1.0)
+    if (gyr > MAX_GYR)
     {
-      gyr = 1.0;
+      gyr = MAX_GYR;
     }
   }
   else if (potGyr < lastPotGyr - potOffset)
   {
     gyr -= 0.01;
-    if (gyr < 0.9)
+    if (gyr < MIN_GYR)
     {
-      gyr = 0.9;
+      gyr = MIN_GYR;
     }
   }
 
@@ -346,17 +354,17 @@ void setupGyrRef()
   if (potRef > lastPotRef + potOffset)
   {
     ref += 5;
-    if (ref > 180)
+    if (ref > MAX_REF)
     {
-      ref = 180;
+      ref = MAX_REF;
     }
   }
   else if (potRef < lastPotRef - potOffset)
   {
     ref -= 5;
-    if (ref < -180)
+    if (ref < MIN_REF)
     {
-      ref = -180;
+      ref = MIN_REF;
     }
   }
 
