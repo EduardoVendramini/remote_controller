@@ -40,8 +40,10 @@ LiquidCrystal_I2C lcd(0x3F, 16, 2);
 float kp = 0.0, kd = 0.0, ki = 0.0;
 int m1 = 1200, m2 = 1200, mIncrement = 5;
 float ref = 0.0, refIncrement = 5.0;
-float gyr = 0.99, gyrIncrement = 0.01;
+float gyr = 0.99, centesimalFloatIncrement = 0.01;
 
+int incrementMultiplier = 1, incrementMultiplierCounter = 1;
+unsigned long timeNow = 0;
 
 int openLoopState = 0, setupState = 0, disturbanceState = 0, potentiometerSetupState = 0, automaticState = 0;
 int potKp, potKd, potKi,
@@ -50,7 +52,7 @@ int potKp, potKd, potKi,
     lastPotKp, lastPotKd, lastPotKi,
     lastPotM1, lastPotM2,
     lastPotGyr, lastPotRef = 0;
-int potOffset = 35;
+int potOffset = 100;
 
 void setDisturbance();
 void setGains();
@@ -93,11 +95,11 @@ void loop()
   potentiometerSetupState = digitalRead(PIN_POTENTIOMETER_SETUP);
 
   if (potentiometerSetupState == LOW)
+  {
     potentiometerSetup();
+  }
 
-  else
-
-      if (openLoopState == LOW)
+  else if (openLoopState == LOW)
   {
     automaticState = 0;
     setMotors();
@@ -195,12 +197,10 @@ void setGains()
   potKd = analogRead(POTENTIOMETER_MID);
   potKi = analogRead(POTENTIOMETER_BOTTOM);
 
-  lcd.setCursor(0, 1);
-
   // kp
   if (potKp > lastPotKp + potOffset)
   {
-    kp += 0.01;
+    kp += centesimalFloatIncrement;
     if (kp > MAX_KP)
     {
       kp = MAX_KP;
@@ -208,7 +208,7 @@ void setGains()
   }
   else if (potKp < lastPotKp - potOffset)
   {
-    kp -= 0.01;
+    kp -= centesimalFloatIncrement;
     if (kp < 0)
     {
       kp = 0.00;
@@ -218,7 +218,7 @@ void setGains()
   // kd
   if (potKd > lastPotKd + potOffset)
   {
-    kd += 0.01;
+    kd += centesimalFloatIncrement;
     if (kd > MAX_KD)
     {
       kd = MAX_KD;
@@ -226,7 +226,7 @@ void setGains()
   }
   else if (potKd < lastPotKd - potOffset)
   {
-    kd -= 0.01;
+    kd -= centesimalFloatIncrement;
     if (kd < 0.0)
     {
       kd = 0.0;
@@ -236,7 +236,7 @@ void setGains()
   // ki
   if (potKi > lastPotKi + potOffset)
   {
-    ki += 0.01;
+    ki += centesimalFloatIncrement;
     if (ki > MAX_KI)
     {
       ki = MAX_KI;
@@ -244,7 +244,7 @@ void setGains()
   }
   else if (potKi < lastPotKi - potOffset)
   {
-    ki -= 0.01;
+    ki -= centesimalFloatIncrement;
     if (ki < 0)
     {
       ki = 0.00;
@@ -255,12 +255,14 @@ void setGains()
   lastPotKd = potKd;
   lastPotKi = potKi;
 
+  lcd.setCursor(0, 1);
   lcd.print(kp);
   lcd.print(" ");
   lcd.print(kd);
   lcd.print(" ");
   lcd.print(ki);
-  lcd.print("  ");
+  lcd.print(" ");
+  lcd.print(incrementMultiplierCounter);
 }
 
 void setMotors()
@@ -269,16 +271,13 @@ void setMotors()
   lcd.setCursor(0, 0);
   lcd.print("M1 and m2   ");
 
-  // write in the second row of lcd
-  lcd.setCursor(0, 1);
-
   potM1 = analogRead(POTENTIOMETER_TOP);
   potM2 = analogRead(POTENTIOMETER_BOTTOM);
 
   // m1
   if (potM1 > lastPotM1 + potOffset)
   {
-    m1 += 5;
+    m1 += mIncrement;
     if (m1 > MAX_MOTOR_SPEED)
     {
       m1 = MAX_MOTOR_SPEED;
@@ -286,7 +285,7 @@ void setMotors()
   }
   else if (potM1 < lastPotM1 - potOffset)
   {
-    m1 -= 5;
+    m1 -= mIncrement;
     if (m1 < MIN_MOTOR_SPEED)
     {
       m1 = MIN_MOTOR_SPEED;
@@ -296,7 +295,7 @@ void setMotors()
   // m2
   if (potM2 > lastPotM2 + potOffset)
   {
-    m2 += 5;
+    m2 += mIncrement;
     if (m2 > MAX_MOTOR_SPEED)
     {
       m2 = MAX_MOTOR_SPEED;
@@ -304,7 +303,7 @@ void setMotors()
   }
   else if (potM2 < lastPotM2 - potOffset)
   {
-    m2 -= 5;
+    m2 -= mIncrement;
     if (m2 < MIN_MOTOR_SPEED)
     {
       m2 = MIN_MOTOR_SPEED;
@@ -314,10 +313,13 @@ void setMotors()
   lastPotM1 = potM1;
   lastPotM2 = potM2;
 
+  // write in the second row of lcd
+  lcd.setCursor(0, 1);
   lcd.print(m1);
   lcd.print("  ");
   lcd.print(m2);
-  lcd.print("    ");
+  lcd.print("     ");
+  lcd.print(incrementMultiplierCounter);
 }
 
 void setupGyrRef()
@@ -326,16 +328,13 @@ void setupGyrRef()
   lcd.setCursor(0, 0);
   lcd.print("Gyr and ref ");
 
-  // write in the second row of the lcd
-  lcd.setCursor(0, 1);
-
   potGyr = analogRead(POTENTIOMETER_TOP);
   potRef = analogRead(POTENTIOMETER_BOTTOM);
 
   // Gyr
   if (potGyr > lastPotGyr + potOffset)
   {
-    gyr += 0.01;
+    gyr += centesimalFloatIncrement;
     if (gyr > MAX_GYR)
     {
       gyr = MAX_GYR;
@@ -343,7 +342,7 @@ void setupGyrRef()
   }
   else if (potGyr < lastPotGyr - potOffset)
   {
-    gyr -= 0.01;
+    gyr -= centesimalFloatIncrement;
     if (gyr < MIN_GYR)
     {
       gyr = MIN_GYR;
@@ -353,7 +352,7 @@ void setupGyrRef()
   // Ref
   if (potRef > lastPotRef + potOffset)
   {
-    ref += 5;
+    ref += refIncrement;
     if (ref > MAX_REF)
     {
       ref = MAX_REF;
@@ -361,7 +360,7 @@ void setupGyrRef()
   }
   else if (potRef < lastPotRef - potOffset)
   {
-    ref -= 5;
+    ref -= refIncrement;
     if (ref < MIN_REF)
     {
       ref = MIN_REF;
@@ -371,14 +370,51 @@ void setupGyrRef()
   lastPotGyr = potGyr;
   lastPotRef = potRef;
 
+  // write in the second row of the lcd
+  lcd.setCursor(0, 1);
   lcd.print(gyr);
-  lcd.print("     ");
+  lcd.print("    ");
   lcd.print(ref);
   lcd.print(" ");
+  lcd.print(incrementMultiplierCounter);
+  lcd.print("  ");
 }
 
 void potentiometerSetup()
 {
-  lcd.setCursor(0, 1);
-  lcd.print("Posicionar pots.");
+  timeNow = millis();
+
+  while (potentiometerSetupState == LOW)
+  {
+    lcd.setCursor(0, 1);
+    lcd.print("Posicionar pots.");
+    delay(20);
+    potentiometerSetupState = digitalRead(PIN_POTENTIOMETER_SETUP);
+  }
+
+  if (millis() - timeNow < 500)
+  {
+    if (incrementMultiplierCounter < 3)
+      incrementMultiplierCounter++;
+    else
+      incrementMultiplierCounter = 1;
+
+    switch (incrementMultiplierCounter)
+    {
+    case 1:
+      incrementMultiplier = 1;
+      break;
+    case 2:
+      incrementMultiplier = 10;
+      break;
+    case 3:
+      incrementMultiplier = 20;
+      break;
+    default:
+      break;
+    }
+
+    mIncrement = 5 * incrementMultiplier;
+    centesimalFloatIncrement = 0.01 * incrementMultiplier;
+  }
 }
